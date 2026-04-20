@@ -1,6 +1,7 @@
-# Salary Prediction ML App (Clean Version)
+# Salary Prediction ML App (Fixed Version)
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 from sklearn.preprocessing import LabelEncoder
@@ -30,27 +31,35 @@ st.subheader("📊 Dataset Preview")
 st.dataframe(df.head())
 
 # ----------------------------
-# Missing Values Handling
+# Clean column names (important fix)
 # ----------------------------
-for col in ['Age', 'Years of Experience', 'Salary']:
-    if df[col].isnull().any():
-        df[col].fillna(df[col].mean(), inplace=True)
-
-for col in ['Gender', 'Education Level', 'Job Title']:
-    if df[col].isnull().any():
-        df[col].fillna(df[col].mode()[0], inplace=True)
-
-st.subheader("✅ Missing Values After Cleaning")
-st.write(df.isnull().sum())
+df.columns = df.columns.str.strip()
 
 # ----------------------------
-# Encoding Categorical Data
+# Replace inf with NaN
 # ----------------------------
-label_encoder = LabelEncoder()
-categorical_cols = ['Gender', 'Education Level', 'Job Title']
+df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-for col in categorical_cols:
-    df[col] = label_encoder.fit_transform(df[col])
+# ----------------------------
+# Fill missing values
+# ----------------------------
+num_cols = df.select_dtypes(include=np.number).columns
+cat_cols = df.select_dtypes(include='object').columns
+
+df[num_cols] = df[num_cols].fillna(df[num_cols].mean())
+
+for col in cat_cols:
+    df[col] = df[col].fillna(df[col].mode()[0])
+
+# ----------------------------
+# Encoding categorical columns
+# ----------------------------
+label_encoders = {}
+
+for col in cat_cols:
+    le = LabelEncoder()
+    df[col] = le.fit_transform(df[col])
+    label_encoders[col] = le
 
 st.subheader("🔢 Encoded Data Sample")
 st.dataframe(df.head())
@@ -60,6 +69,12 @@ st.dataframe(df.head())
 # ----------------------------
 X = df.drop('Salary', axis=1)
 y = df['Salary']
+
+# ----------------------------
+# Final safety check (VERY IMPORTANT)
+# ----------------------------
+X = X.replace([np.inf, -np.inf], np.nan)
+X = X.fillna(X.mean())
 
 # ----------------------------
 # Train-Test Split
@@ -87,7 +102,7 @@ for name, model in models.items():
 
     mae = mean_absolute_error(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
-    rmse = mse ** 0.5
+    rmse = np.sqrt(mse)
     r2 = r2_score(y_test, y_pred)
 
     results.append([name, mae, mse, rmse, r2])
@@ -104,16 +119,16 @@ st.subheader("📈 Model Performance Comparison")
 st.dataframe(results_df.sort_values(by="R2", ascending=False))
 
 # ----------------------------
-# Save Best Model (Random Forest)
+# Train Best Model
 # ----------------------------
 best_model = RandomForestRegressor(random_state=42)
 best_model.fit(X_train, y_train)
 
-model_filename = "salary_model.pkl"
-
-with open(model_filename, "wb") as file:
+# ----------------------------
+# Save Model
+# ----------------------------
+with open("salary_model.pkl", "wb") as file:
     pickle.dump(best_model, file)
 
-st.success("✅ Model trained and saved as salary_model.pkl")
-
+st.success("✅ Model trained and saved successfully as salary_model.pkl")
 st.info("✔ App is ready for deployment")
